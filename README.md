@@ -1,4 +1,4 @@
-# Its just standart fork of Gate, but now he has UDP support!
+# Its just standart fork of Gate, but now Gate Lite has UDP support!
 
 [![Logo](.web/docs/public/og-image.png)](https://gate.minekube.com)
 
