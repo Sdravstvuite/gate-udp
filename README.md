@@ -1,3 +1,5 @@
+№ Its just standart fork of Gate, but now he has UDP support!
+
 [![Logo](.web/docs/public/og-image.png)](https://gate.minekube.com)
 
 # The extensible Minecraft Proxy
@@ -32,28 +34,6 @@ Follow our [quick start guide](https://gate.minekube.com/guide/quick-start/) on 
 
 [![Server list](.web/docs/images/server-list.png)](https://gate.minekube.com)
 
-## Bedrock Cross-Play Support
-
-Gate includes built-in **Bedrock Edition support** through Geyser enabling cross-play between
-Java Edition (PC) and Bedrock Edition (Mobile, Console, Windows) players
-through integrated Geyser & Floodgate technology - **zero plugins required**!
-
-See the [Bedrock Guide](https://gate.minekube.com/guide/bedrock/) for setup instructions.
-
-```mermaid
-graph LR
-    A[Java Players<br/>PC] -->|25565| D(Gate Proxy)
-    B[Bedrock Players<br/>Mobile/Console/Win] -->|19132| C(Geyser)
-    C -->|25567| D
-    D -->|Java Protocol| E[Backend Server<br/>Paper/Spigot/Vanilla]
-
-    style A fill:#b36b00,stroke:#333,stroke-width:2px
-    style B fill:#007a7a,stroke:#222,stroke-width:2px
-    style C fill:#1e90ff,stroke:#222,stroke-width:2px
-    style D fill:#2e8b57,stroke:#222,stroke-width:2px
-    style E fill:#a0526d,stroke:#222,stroke-width:2px
-```
-
 ## Gate Lite Mode
 
 Gate has a Lite Mode which is a lightweight version of Gate that can expose
@@ -75,8 +55,3 @@ graph LR
     linkStyle 2 stroke:purple
     linkStyle 3 stroke:orange
 ```
-
-## Developers Starter Template
-
-The starter template is designed to help you get started with your own Gate powered project.
-Fork it! 🚀 - [minekube/gate-plugin-template](https://github.com/minekube/gate-plugin-template)
