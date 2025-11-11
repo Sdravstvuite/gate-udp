@@ -26,6 +26,12 @@ config:
       - host: localhost
         # The backend server to connect to if matched.
         backend: localhost:25566
+        # UDP voice proxying (optional): enable and set ports
+        #udp: true
+        #udpListenPort: 25567      # local UDP port on the same IP as bind
+        #udpBackendPort: 25567     # UDP port on backend host
+        #udpIdleTimeout: 90s       # optional, default 90s
+        #udpClientLimit: 10000     # optional
         # The optional fallback status response when all backends of this route are offline.
         fallback:
           motd: |

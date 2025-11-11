@@ -66,7 +66,9 @@ type Proxy struct {
 	connectionsQuota *addrquota.Quota
 	loginsQuota      *addrquota.Quota
 
-	lite *lite.Lite // lite mode functionality
+    lite *lite.Lite // lite mode functionality
+
+    udpOnce sync.Once
 }
 
 // Options are the options for a new Java edition Proxy.
@@ -113,8 +115,8 @@ func New(options Options) (p *Proxy, err error) {
 		playerNames:      map[string]*connectedPlayer{},
 		playerIDs:        map[uuid.UUID]*connectedPlayer{},
 		authenticator:    authn,
-		lite:             lite.NewLite(), // create lite mode functionality for this proxy instance
-	}
+        lite:             lite.NewLite(), // create lite mode functionality for this proxy instance
+    }
 
 	// Connection & login rate limiters
 	p.initQuota(&options.Config.Quota)
@@ -208,43 +210,75 @@ func (p *Proxy) Start(ctx context.Context) error {
 		return stop
 	}
 
-	stopLn := listen(p.cfg.Bind)
+    stopLn := listen(p.cfg.Bind)
+
+    // Start Lite UDP listeners if enabled
+    p.udpOnce.Do(func() {
+        if p.cfg.Lite.Enabled {
+            bindHost, _, _ := net.SplitHostPort(p.cfg.Bind)
+            mgr := lite.NewUDPManager(p.log, p.lite.StrategyManager())
+            _ = mgr.Restart(ctx, bindHost, p.cfg.Lite.Routes)
+            p.lite.SetUDPManager(mgr)
+        }
+    })
 
 	// Listen for config reloads until we exit
-	defer reload.Subscribe(p.event, func(e *javaConfigUpdateEvent) {
-		*p.cfg = *e.Config
-		p.initQuota(&e.Config.Quota)
-		if e.PrevConfig.Bind != e.Config.Bind {
-			p.closeMu.Lock()
-			stopLn()
-			stopLn = listen(e.Config.Bind)
-			p.closeMu.Unlock()
-		}
-		if err := p.init(); err != nil {
-			p.log.Error(err, "re-initialization error")
-		}
-		if e.Config.Lite.Enabled {
-			// reset whole cache if routes have changed because
-			// backend addrs might have moved to another route or a cacheTTL changed
-			if func() bool {
-				if len(e.Config.Lite.Routes) != len(e.PrevConfig.Lite.Routes) {
-					return true
-				}
-				for i, route := range e.Config.Lite.Routes {
-					if !route.Equal(&e.PrevConfig.Lite.Routes[i]) {
-						return true
-					}
-				}
-				return false
-			}() {
-				lite.ResetPingCache()
-				p.log.Info("lite ping cache was reset")
-			}
-		} else {
-			lite.ResetPingCache()
-		}
-		logInfo()
-	})()
+    defer reload.Subscribe(p.event, func(e *javaConfigUpdateEvent) {
+        *p.cfg = *e.Config
+        p.initQuota(&e.Config.Quota)
+        if e.PrevConfig.Bind != e.Config.Bind {
+            p.closeMu.Lock()
+            stopLn()
+            stopLn = listen(e.Config.Bind)
+            p.closeMu.Unlock()
+
+            // Restart UDP listeners on bind change
+            if p.cfg.Lite.Enabled {
+                if m := p.lite.UDPManager(); m != nil {
+                    bindHost, _, _ := net.SplitHostPort(p.cfg.Bind)
+                    _ = m.Restart(p.startCtx, bindHost, p.cfg.Lite.Routes)
+                }
+            }
+        }
+        if err := p.init(); err != nil {
+            p.log.Error(err, "re-initialization error")
+        }
+        if e.Config.Lite.Enabled {
+            // reset whole cache if routes have changed because
+            // backend addrs might have moved to another route or a cacheTTL changed
+            if func() bool {
+                if len(e.Config.Lite.Routes) != len(e.PrevConfig.Lite.Routes) {
+                    return true
+                }
+                for i, route := range e.Config.Lite.Routes {
+                    if !route.Equal(&e.PrevConfig.Lite.Routes[i]) {
+                        return true
+                    }
+                }
+                return false
+            }() {
+                lite.ResetPingCache()
+                p.log.Info("lite ping cache was reset")
+            }
+
+            // Ensure UDP manager exists
+            if p.lite.UDPManager() == nil {
+                p.lite.SetUDPManager(lite.NewUDPManager(p.log, p.lite.StrategyManager()))
+            }
+            // Restart UDP listeners if routes changed
+            if p.lite.UDPManager() != nil {
+                bindHost, _, _ := net.SplitHostPort(p.cfg.Bind)
+                _ = p.lite.UDPManager().Restart(p.startCtx, bindHost, p.cfg.Lite.Routes)
+            }
+        } else {
+            lite.ResetPingCache()
+            // Stop UDP listeners when lite disabled
+            if m := p.lite.UDPManager(); m != nil {
+                m.Stop()
+            }
+        }
+        logInfo()
+    })()
 
 	return eg.Wait()
 }
@@ -263,7 +297,12 @@ func (p *Proxy) Shutdown(reason component.Component) {
 		return // not started or already shutdown
 	}
 	p.started = false
-	p.cancelStart()
+    p.cancelStart()
+
+    // Stop UDP listeners if running
+    if m := p.lite.UDPManager(); m != nil {
+        m.Stop()
+    }
 
 	p.log.Info("shutting down the proxy...")
 	shutdownTime := time.Now()
